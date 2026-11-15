@@ -41,7 +41,7 @@ input[type=text]{font:inherit;padding:7px 10px;border:1px solid var(--line);bord
 <script>
 (function(){
 var $=function(i){return document.getElementById(i)},app=$("app");
-var files=[],conns=[],peer=null,peerId=null,sentBytes=0,cur=null,list=[],conn=null,rpeer=null,busy=false;
+var auto=false,files=[],conns=[],peer=null,peerId=null,sentBytes=0,cur=null,list=[],conn=null,rpeer=null,busy=false;
 function msg(t,err){var m=$("msg");m.textContent=t||"";m.className=err?"err":""}
 function prog(f){var b=$("bar");b.style.display=f==null?"none":"block";if(f!=null)b.firstChild.style.width=Math.round(Math.min(1,f)*100)+"%"}
 function fmt(n){n=n||0;if(n<1024)return n+" B";if(n<1048576)return (n/1024).toFixed(1)+" KB";if(n<1073741824)return (n/1048576).toFixed(1)+" MB";return (n/1073741824).toFixed(2)+" GB"}
@@ -149,7 +149,7 @@ function fetchFile(i,sink){return new Promise(function(res,rej){
   conn.send({t:"get",i:i})})}
 function onData(m){
   if(!m)return;
-  if(m.t==="list"){list=m.files;recvList();return}
+  if(m.t==="list"){list=m.files;recvList();if(!auto&&list.length){auto=true;msg("Starting download…");setTimeout(dlAll,300)}return}
   if(!cur||m.i!==cur.i)return;
   if(m.t==="chunk"){
     cur.got+=m.d.byteLength;prog(cur.size?cur.got/cur.size:1);
@@ -161,9 +161,8 @@ function onData(m){
   }else if(m.t==="err"){var c2=cur;cur=null;c2.rej(new Error("file unavailable"))}}
 async function dlOne(i){
   if(busy)return;var f=list[i],name=f.p.split("/").pop(),sink=null;
-  if(window.showSaveFilePicker){try{var h=await showSaveFilePicker({suggestedName:name}),w=await h.createWritable();sink={write:function(b){return w.write(b)},close:function(){return w.close()}}}catch(e){if(e&&e.name==="AbortError")return}}
   busy=true;msg("Downloading "+name+"…");
-  try{var b=await fetchFile(i,sink);if(!sink)saveBlob(b,name);msg("Done ✓ "+name)}catch(e){msg("Download failed: "+e.message,true)}
+  try{var b=await fetchFile(i,sink);if(!sink)saveBlob(b,name);msg("Saved to your Downloads folder ✓ "+name)}catch(e){msg("Download failed: "+e.message,true)}
   prog(null);busy=false}
 async function dlAll(){
   if(busy)return;if(list.length==1)return dlOne(0);
@@ -173,7 +172,7 @@ async function dlAll(){
     for(var i=0;i<list.length;i++){msg("Downloading "+(i+1)+" of "+list.length+": "+list[i].p);z.file(list[i].p,await fetchFile(i,null),{binary:true})}
     msg("Building zip…");prog(null);
     var b=await z.generateAsync({type:"blob",compression:"STORE"},function(m){prog(m.percent/100)});
-    saveBlob(b,"filedrop.zip");msg("Done ✓ filedrop.zip")}catch(e){msg("Download failed: "+e.message,true)}
+    saveBlob(b,"filedrop.zip");msg("Saved to your Downloads folder ✓ filedrop.zip")}catch(e){msg("Download failed: "+e.message,true)}
   prog(null);busy=false}
 function recvList(){
   var box=$("rl");if(!box)return;box.innerHTML="";
@@ -186,7 +185,7 @@ function recvList(){
     var b=el("button","","Download");b.onclick=function(){dlOne(x.i)};r.appendChild(b);box.appendChild(r)})}
 function receiverView(id){
   app.innerHTML="";
-  app.appendChild(el("h2","","Files for you"));
+  app.appendChild(el("h2","","Your download"));
   var s=el("div","sub","Connecting to sender…");s.id="rs";app.appendChild(s);
   var h=el("div","sub");h.id="rh";app.appendChild(h);
   var a=el("button","pri","Download");a.id="ra";a.style.display="none";a.onclick=dlAll;var ac=el("div","acts");ac.appendChild(a);app.appendChild(ac);
@@ -196,7 +195,7 @@ function receiverView(id){
   rpeer.on("error",function(e){clearTimeout(timer);$("rs").style.color="var(--danger)";$("rs").textContent=e.type==="peer-unavailable"?"The sender is offline or closed the page. Ask them to reopen it.":"Connection problem: "+e.type});
   rpeer.on("open",function(){
     conn=rpeer.connect(id,{reliable:true});
-    conn.on("open",function(){clearTimeout(timer);$("rs").textContent="Connected ✓ files come straight from the sender.";$("rs").style.color="var(--ok)"});
+    conn.on("open",function(){clearTimeout(timer);$("rs").textContent="Connected ✓ your download starts automatically and saves to your Downloads folder.";$("rs").style.color="var(--ok)"});
     conn.on("data",onData);
     conn.on("close",function(){$("rs").textContent="Sender disconnected.";$("rs").style.color="var(--danger)";if(cur){cur.rej(new Error("sender disconnected"));cur=null}});
   })}
