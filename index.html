@@ -2,60 +2,58 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>FileDrop</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
-:root{--bg:#f6f5f1;--card:#fff;--ink:#1c1b19;--mut:#78756d;--line:#e4e1d8;--acc:#2f5bea;--accink:#fff;--hover:#f0eee7;--danger:#c0392b;
-box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#15151a;--card:#1e1e25;--ink:#ecebe6;--mut:#9a98a0;--line:#31313a;--acc:#6f8cff;--accink:#0d0d14;--hover:#26262f;--danger:#ff7b6b}}
-:root[data-theme="dark"]{--bg:#15151a;--card:#1e1e25;--ink:#ecebe6;--mut:#9a98a0;--line:#31313a;--acc:#6f8cff;--accink:#0d0d14;--hover:#26262f;--danger:#ff7b6b}
-*{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
+:root{--bg:#f6f5f1;--card:#fff;--ink:#1c1b19;--mut:#78756d;--line:#e4e1d8;--acc:#2f5bea;--accink:#fff;--hover:#f0eee7;--danger:#c0392b;--ok:#1f8a4c}
+@media (prefers-color-scheme:dark){:root{--bg:#15151a;--card:#1e1e25;--ink:#ecebe6;--mut:#9a98a0;--line:#31313a;--acc:#6f8cff;--accink:#0d0d14;--hover:#26262f;--danger:#ff7b6b;--ok:#4cc27f}}
+*{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 .wrap{max-width:760px;margin:0 auto;padding:22px 16px 60px}
-h1{font-size:24px;margin:0 0 4px;letter-spacing:-.02em;cursor:pointer}h2{font-size:16px;margin:26px 0 8px}
+h1{font-size:24px;margin:0 0 4px;letter-spacing:-.02em;cursor:pointer}h2{font-size:16px;margin:24px 0 8px}
 .sub{color:var(--mut);margin:0 0 16px}
-#drop{border:2px dashed var(--line);border-radius:14px;padding:30px 16px;text-align:center;background:var(--card)}
-#drop.over{border-color:var(--acc);background:var(--hover)}
-#drop p{margin:0 0 12px;color:var(--mut)}
+#drop{border:2px dashed var(--line);border-radius:14px;padding:28px 16px;text-align:center;background:var(--card)}
+#drop.over{border-color:var(--acc);background:var(--hover)}#drop p{margin:0 0 12px;color:var(--mut)}
 button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:9px;padding:7px 13px}
 button:hover{background:var(--hover)}button.pri{background:var(--acc);color:var(--accink);border-color:var(--acc)}
-button.del{color:var(--danger)}
-input[type=text]{font:inherit;padding:7px 10px;border:1px solid var(--line);border-radius:9px;background:var(--card);color:var(--ink);min-width:0}
+button.del{color:var(--danger)}button:disabled{opacity:.5;cursor:default}
+input[type=text]{font:inherit;padding:7px 10px;border:1px solid var(--line);border-radius:9px;background:var(--card);color:var(--ink);min-width:0;flex:1}
 .opts{margin-top:10px;font-size:13px;color:var(--mut)}
 .list{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
 .row{display:flex;align-items:center;gap:10px;padding:10px 14px;border-top:1px solid var(--line)}.row:first-child{border-top:0}
 .nm{flex:1;min-width:0;overflow-wrap:anywhere}.sz{color:var(--mut);font-size:13px;white-space:nowrap}
 .empty{padding:22px;text-align:center;color:var(--mut)}
-.linkbox{display:flex;gap:8px;margin:10px 0}.linkbox input{flex:1}
-.code{font:600 20px ui-monospace,Menlo,monospace;letter-spacing:.12em}
-.go{display:flex;gap:8px;margin-top:6px}
+.box{display:flex;gap:8px;margin:10px 0}
+.note{font-size:13px;color:var(--mut);background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:10px 0}
+.live{color:var(--ok);font-weight:600}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
 #msg{margin:10px 0;font-size:13px;color:var(--mut);min-height:18px}#msg.err{color:var(--danger)}
-.acts{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+#bar{height:6px;background:var(--line);border-radius:9px;overflow:hidden;margin:8px 0;display:none}#bar i{display:block;height:100%;width:0;background:var(--acc)}
 </style>
 </head>
 <body>
 <div class="wrap">
 <h1 id="home">📁 FileDrop</h1>
-<p class="sub">Send files, folders or zips to anyone with a link.</p>
-<div id="msg"></div>
+<p class="sub">Send files, folders or zips straight to someone with a link. No upload, no account.</p>
+<div id="bar"><i></i></div><div id="msg"></div>
 <div id="app"></div>
 </div>
 <script>
 (function(){
-var BASE="https://claude.ai/artifact/5gAeyqLEWCGMnjnxMDm44x";
-var db=null,assets=null,dl=null,busy=false,armed=null;
-var $=function(i){return document.getElementById(i)};
+var $=function(i){return document.getElementById(i)},app=$("app");
+var files=[],conns=[],peer=null,peerId=null,sentBytes=0,cur=null,list=[],conn=null,rpeer=null,busy=false;
 function msg(t,err){var m=$("msg");m.textContent=t||"";m.className=err?"err":""}
+function prog(f){var b=$("bar");b.style.display=f==null?"none":"block";if(f!=null)b.firstChild.style.width=Math.round(Math.min(1,f)*100)+"%"}
 function fmt(n){n=n||0;if(n<1024)return n+" B";if(n<1048576)return (n/1024).toFixed(1)+" KB";if(n<1073741824)return (n/1048576).toFixed(1)+" MB";return (n/1073741824).toFixed(2)+" GB"}
-function el(t,cls,txt){var e=document.createElement(t);if(cls)e.className=cls;if(txt!=null)e.textContent=txt;return e}
-function mine(){try{return JSON.parse(localStorage.getItem("fd_mine")||"[]")}catch(e){return[]}}
-function setMine(a){try{localStorage.setItem("fd_mine",JSON.stringify(a))}catch(e){}}
-function newCode(){var c="abcdefghjkmnpqrstuvwxyz23456789",s="";for(var i=0;i<7;i++)s+=c[Math.floor(Math.random()*c.length)];return s}
+function el(t,c,x){var e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e}
+function sleep(ms){return new Promise(function(r){setTimeout(r,ms)})}
+function rid(n){var a="abcdefghjkmnpqrstuvwxyz23456789",s="";for(var i=0;i<n;i++)s+=a[Math.floor(Math.random()*a.length)];return s}
+function load(urls){return new Promise(function(res){var u=urls.slice();(function next(){var s=u.shift();if(!s)return res(false);var t=document.createElement("script");t.src=s;t.onload=function(){res(true)};t.onerror=function(){t.remove();next()};document.head.appendChild(t)})()})}
+function saveBlob(b,name){var a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(a.href)},60000)}
 
-/* ---- intake ---- */
+/* ================= SENDER ================= */
 function readEntry(en,prefix,out){return new Promise(function(res){
-  if(en.isFile){en.file(function(f){out.push({path:prefix+en.name,file:f});res()},function(){res()})}
+  if(en.isFile)en.file(function(f){out.push({path:prefix+en.name,file:f});res()},function(){res()});
   else if(en.isDirectory){var rd=en.createReader(),acc=[];
     (function pump(){rd.readEntries(async function(b){
       if(!b.length){for(var i=0;i<acc.length;i++)await readEntry(acc[i],prefix+en.name+"/",out);res()}
@@ -64,66 +62,61 @@ function readEntry(en,prefix,out){return new Promise(function(res){
 async function expand(items,unzip){
   var out=[];
   for(var i=0;i<items.length;i++){var it=items[i],f=it.file;
-    if(unzip&&/\.zip$/i.test(f.name)){
-      try{var z=await JSZip.loadAsync(f),base=it.path.replace(/\.zip$/i,""),ns=Object.keys(z.files);
+    if(unzip&&window.JSZip&&/\.zip$/i.test(f.name)){
+      try{msg("Unpacking "+f.name+"…");var z=await JSZip.loadAsync(f),base=it.path.replace(/\.zip$/i,""),ns=Object.keys(z.files);
         for(var k=0;k<ns.length;k++){var zf=z.files[ns[k]];
           if(zf.dir||/(^|\/)__MACOSX\//.test(zf.name)||/\.DS_Store$/.test(zf.name))continue;
           out.push({path:base+"/"+zf.name,file:await zf.async("blob")})}
         continue}catch(e){}}
     out.push(it)}
   return out}
-async function upBlob(b){
-  try{return await assets.upload(b)}catch(e){
-    return await assets.upload(new Blob([b],{type:"text/plain"}))}}
+function startPeer(){return new Promise(function(res,rej){
+  var tries=0;(function mk(){
+    var id="fd"+rid(8),p=new Peer(id),opened=false;
+    p.on("open",function(){opened=true;peer=p;peerId=id;res(id)});
+    p.on("connection",onConn);
+    p.on("disconnected",function(){try{p.reconnect()}catch(e){}});
+    p.on("error",function(e){
+      if(!opened){if(e.type==="unavailable-id"&&tries++<5){p.destroy();mk()}else rej(e)}
+      else if(e.type!=="peer-unavailable")msg("Connection problem: "+e.type,true)});
+  })()})}
+function listMsg(){return{t:"list",files:files.map(function(f){return{p:f.path,s:f.file.size}})}}
+function onConn(c){
+  c.on("open",function(){conns.push(c);c.send(listMsg());stat()});
+  c.on("data",function(m){if(m&&m.t==="get")serve(c,m.i)});
+  var gone=function(){conns=conns.filter(function(x){return x!==c});stat()};
+  c.on("close",gone);c.on("error",gone)}
+async function serve(c,i){
+  var f=files[i];if(!f){c.send({t:"err",i:i});return}
+  var CH=65536,sz=f.file.size;
+  try{
+    for(var o=0;o<sz;o+=CH){
+      if(!c.open)return;
+      var b=await f.file.slice(o,o+CH).arrayBuffer();
+      while(c.dataChannel&&c.dataChannel.bufferedAmount>8e6){await sleep(25);if(!c.open)return}
+      c.send({t:"chunk",i:i,d:b});sentBytes+=b.byteLength;if(!(o%(CH*16)))stat()}
+    c.send({t:"end",i:i});stat()
+  }catch(e){}}
+function stat(){var s=$("stat");if(!s)return;s.textContent=conns.length?conns.length+" connected · "+fmt(sentBytes)+" sent":"Waiting for someone to open the link…"}
+function pushList(){conns.forEach(function(c){if(c.open)c.send(listMsg())})}
 async function ingest(items,unzip){
-  if(busy||!items.length)return;
-  if(!db||!assets){msg("Uploading isn’t available for your account on this page.",true);return}
-  busy=true;var list=await expand(items,unzip),files=[],bad=0;
-  for(var i=0;i<list.length;i++){
-    msg("Uploading "+(i+1)+" of "+list.length+": "+list[i].path);
-    try{var u=await upBlob(list[i].file);files.push({p:list[i].path.replace(/^\/+/,""),s:list[i].file.size,a:u.id})}catch(e){bad++}}
-  if(!files.length){busy=false;msg("Nothing could be uploaded (each file must be 20 MB or less).",true);return}
-  var code=newCode(),first=files[0].p.split("/")[0];
-  var name=files.length==1?files[0].p:(first+(files.every(function(f){return f.p.split("/")[0]===first})?"":" and more"));
-  try{await db.collection("shares").doc(code).set({name:name,files:files,ts:Date.now()})}
-  catch(e){busy=false;msg("Couldn’t create the share link.",true);return}
-  var m=mine();m.unshift(code);setMine(m);busy=false;
-  msg(bad?bad+" file(s) were skipped (too big or rejected).":"",!!bad);
-  location.hash=code;
-}
-
-/* ---- download ---- */
-async function save(name,blob){
-  if(dl){try{await dl.save({filename:name,data:blob});return}catch(e){if(e&&e.code==="declined")return}}
-  var a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove()}
-async function bytes(f){var r=await fetch("/_blob/"+f.a);if(!r.ok)throw new Error("x");return await r.blob()}
-async function dlOne(f){try{msg("Preparing…");await save(f.p.split("/").pop(),await bytes(f));msg("")}catch(e){msg("Download failed.",true)}}
-async function dlAll(sh){
-  if(sh.files.length==1)return dlOne(sh.files[0]);
-  try{var z=new JSZip();
-    for(var i=0;i<sh.files.length;i++){msg("Zipping "+(i+1)+" of "+sh.files.length+"…");z.file(sh.files[i].p,await bytes(sh.files[i]))}
-    var b=await z.generateAsync({type:"blob"});await save(sh.name.replace(/[\/]/g,"_")+".zip",b);msg("")}
-  catch(e){msg("Couldn’t build the zip.",true)}}
-async function delShare(code,sh,btn){
-  if(armed!==btn){armed=btn;btn.textContent="Sure?";setTimeout(function(){if(armed===btn){armed=null;btn.textContent="Delete"}},3000);return}
-  armed=null;
-  try{for(var i=0;i<sh.files.length;i++){try{if(assets)await assets.delete(sh.files[i].a)}catch(e){}}
-    await db.collection("shares").doc(code).delete()}catch(e){msg("Couldn’t delete.",true);return}
-  setMine(mine().filter(function(c){return c!==code}));
-  if(location.hash.slice(1)===code)location.hash="";else route()}
-
-/* ---- views ---- */
-async function getShare(code){
-  var s=await db.collection("shares").doc(code).get();
-  return s.exists?s.data():null}
-async function homeView(app){
-  var d=el("div");d.id="drop";d.appendChild(el("p","","Drop files, folders or .zip archives here"));
-  var bf=el("button","pri","Choose files"),bd=el("button","","Choose folder");
+  if(busy||!items.length)return;busy=true;
+  try{
+    var l=await expand(items,unzip);
+    l.forEach(function(it){files.push({path:it.path.replace(/^\/+/,""),file:it.file})});
+    if(!peer){msg("Creating your link…");try{await startPeer()}catch(e){files=[];busy=false;msg("Couldn’t reach the connection server. Check your internet and try again.",true);return}}
+    msg("");pushList();senderView()
+  }catch(e){msg("Something went wrong: "+e.message,true)}
+  busy=false}
+function senderView(){
+  app.innerHTML="";
+  var d=el("div");d.id="drop";d.appendChild(el("p","",files.length?"Add more files":"Drop files, folders or .zip archives here"));
+  var bf=el("button",files.length?"":"pri","Choose files"),bd=el("button","","Choose folder");
   var fi=el("input");fi.type="file";fi.multiple=true;fi.hidden=true;
   var di=el("input");di.type="file";di.setAttribute("webkitdirectory","");di.hidden=true;
-  var o=el("div","opts"),lb=el("label"),cb=el("input");cb.type="checkbox";cb.id="unzip";
+  var o=el("div","opts"),lb=el("label"),cb=el("input");cb.type="checkbox";cb.checked=!!window.JSZip;cb.disabled=!window.JSZip;
   lb.appendChild(cb);lb.appendChild(document.createTextNode(" Unpack .zip files so people can pick files"));o.appendChild(lb);
-  [bf,bd].forEach(function(b){d.appendChild(b);d.appendChild(document.createTextNode(" "))});d.appendChild(o);d.appendChild(fi);d.appendChild(di);
+  d.appendChild(bf);d.appendChild(document.createTextNode(" "));d.appendChild(bd);d.appendChild(o);d.appendChild(fi);d.appendChild(di);
   bf.onclick=function(){fi.click()};bd.onclick=function(){di.click()};
   fi.onchange=function(){ingest([].map.call(fi.files,function(f){return{path:f.name,file:f}}),cb.checked);fi.value=""};
   di.onchange=function(){ingest([].map.call(di.files,function(f){return{path:f.webkitRelativePath||f.name,file:f}}),cb.checked);di.value=""};
@@ -135,67 +128,91 @@ async function homeView(app){
     if(ens.length)for(var j=0;j<ens.length;j++)await readEntry(ens[j],"",out);
     else for(var k=0;k<dt.files.length;k++)out.push({path:dt.files[k].name,file:dt.files[k]});
     ingest(out,cb.checked)});
-  if(assets&&db)app.appendChild(d);
-  else await diag(app);
-  app.appendChild(el("h2","","Got a code?"));
-  var g=el("div","go"),inp=el("input");inp.type="text";inp.placeholder="Paste a code or link";
-  var gb=el("button","pri","Open");
-  function go(){var v=inp.value.trim().split("#").pop().toLowerCase();if(v)location.hash=v}
-  gb.onclick=go;inp.onkeydown=function(e){if(e.key==="Enter")go()};g.appendChild(inp);g.appendChild(gb);app.appendChild(g);
-  var m=mine();
-  if(m.length&&db){
-    app.appendChild(el("h2","","Your shares"));var L=el("div","list");app.appendChild(L);
-    for(var i=0;i<m.length;i++){
-      var sh=null;try{sh=await getShare(m[i])}catch(e){}
-      if(!sh){continue}
-      var r=el("div","row");r.appendChild(el("span","nm",sh.name));
-      r.appendChild(el("span","sz",sh.files.length+" file"+(sh.files.length==1?"":"s")+" · "+fmt(sh.files.reduce(function(a,f){return a+f.s},0))));
-      var ob=el("button","","Open");(function(c){ob.onclick=function(){location.hash=c}})(m[i]);r.appendChild(ob);L.appendChild(r)}
-    if(!L.children.length)L.appendChild(el("div","empty","No active shares."))}
-}
-async function shareView(app,code){
-  var b=el("button","","← New share");b.onclick=function(){location.hash=""};app.appendChild(b);
-  if(!db){app.appendChild(el("div","empty","Sign in to open shared files."));return}
-  var sh=null;try{sh=await getShare(code)}catch(e){}
-  if(!sh){app.appendChild(el("div","empty","No share found for “"+code+"”. It may have been deleted."));return}
-  app.appendChild(el("h2","",sh.name));
-  var url=BASE+"#"+code,lbx=el("div","linkbox"),li=el("input");li.type="text";li.readOnly=true;li.value=url;
+  app.appendChild(d);
+  if(!files.length)return;
+  var url=location.href.split("#")[0]+"#"+peerId;
+  app.appendChild(el("h2","","Send this link"));
+  var bx=el("div","box"),li=el("input");li.type="text";li.readOnly=true;li.value=url;li.onfocus=function(){li.select()};
   var cp=el("button","pri","Copy link");
   cp.onclick=async function(){try{await navigator.clipboard.writeText(url);cp.textContent="Copied ✓"}catch(e){li.select();cp.textContent="Press Ctrl/Cmd+C"}setTimeout(function(){cp.textContent="Copy link"},2000)};
-  lbx.appendChild(li);lbx.appendChild(cp);app.appendChild(lbx);
-  var cd=el("div","sub");cd.appendChild(document.createTextNode("Or give them the code: "));cd.appendChild(el("span","code",code));app.appendChild(cd);
-  var acts=el("div","acts"),da=el("button","pri",sh.files.length>1?"Download all (.zip)":"Download");da.onclick=function(){dlAll(sh)};acts.appendChild(da);
-  if(mine().indexOf(code)>=0){var dd=el("button","del","Delete");dd.onclick=function(){delShare(code,sh,dd)};acts.appendChild(dd)}
-  app.appendChild(acts);
-  var L=el("div","list");sh.files.slice().sort(function(a,b){return a.p.localeCompare(b.p)}).forEach(function(f){
-    var r=el("div","row");r.appendChild(el("span","nm","📄 "+f.p));r.appendChild(el("span","sz",fmt(f.s)));
-    var x=el("button","","Download");x.onclick=function(){dlOne(f)};r.appendChild(x);L.appendChild(r)});
+  bx.appendChild(li);bx.appendChild(cp);app.appendChild(bx);
+  var n=el("div","note");n.appendChild(document.createTextNode("Files go straight from this tab to theirs, so "));n.appendChild(el("b","","keep this page open"));
+  n.appendChild(document.createTextNode(" until they finish downloading. Status: "));var s=el("span","live");s.id="stat";n.appendChild(s);app.appendChild(n);stat();
+  var L=el("div","list");files.forEach(function(f,i){
+    var r=el("div","row");r.appendChild(el("span","nm","📄 "+f.path));r.appendChild(el("span","sz",fmt(f.file.size)));
+    var x=el("button","del","Remove");x.onclick=function(){files.splice(i,1);pushList();senderView()};r.appendChild(x);L.appendChild(r)});
   app.appendChild(L)}
-async function diag(app){
-  var box=el("div","empty"),st={};
-  try{var p=await claude.use("permissions");if(p)st=await p.state()}catch(e){}
-  var miss=[];if(!db)miss.push("storage (db)");if(!assets)miss.push("uploads (assets)");
-  box.appendChild(el("p","","Uploads aren’t switched on for this view yet. Missing: "+miss.join(", ")+"."));
-  var ps=Object.keys(st).map(function(k){return k+": "+st[k]}).join(" · ");
-  if(ps)box.appendChild(el("p","sz","Permissions → "+ps));
-  var a=el("button","pri","Allow & retry");
-  a.onclick=async function(){try{var p=await claude.use("permissions");if(p)await p.request()}catch(e){}await init()};
-  var m=el("button","","Manage permissions");
-  m.onclick=async function(){try{var p=await claude.use("permissions");if(p)await p.manage()}catch(e){}await init()};
-  box.appendChild(a);box.appendChild(document.createTextNode(" "));box.appendChild(m);
-  box.appendChild(el("p","sz","You can still receive files with a code below."));
-  app.appendChild(box)}
-async function route(){
-  var app=$("app"),code=location.hash.slice(1).toLowerCase();app.innerHTML="";
-  if(code)await shareView(app,code);else await homeView(app)}
-$("home").onclick=function(){location.hash=""};
-window.addEventListener("hashchange",function(){msg("");route()});
-async function init(){
-  try{db=await claude.use("db")}catch(e){}
-  try{assets=await claude.use("assets")}catch(e){}
-  try{dl=await claude.use("downloads")}catch(e){}
-  route()}
-if(window.claude&&claude.use)init();else route();
+
+/* ================= RECEIVER ================= */
+function fetchFile(i,sink){return new Promise(function(res,rej){
+  cur={i:i,parts:[],got:0,size:list[i].s,sink:sink,chain:Promise.resolve(),res:res,rej:rej};
+  conn.send({t:"get",i:i})})}
+function onData(m){
+  if(!m)return;
+  if(m.t==="list"){list=m.files;recvList();return}
+  if(!cur||m.i!==cur.i)return;
+  if(m.t==="chunk"){
+    cur.got+=m.d.byteLength;prog(cur.size?cur.got/cur.size:1);
+    if(cur.sink){var u=new Uint8Array(m.d);cur.chain=cur.chain.then(function(){return cur&&cur.sink?cur.sink.write(u):0})}
+    else cur.parts.push(m.d)
+  }else if(m.t==="end"){
+    var c=cur;cur=null;
+    c.chain.then(function(){return c.sink?c.sink.close().then(function(){return null}):new Blob(c.parts)}).then(c.res,c.rej)
+  }else if(m.t==="err"){var c2=cur;cur=null;c2.rej(new Error("file unavailable"))}}
+async function dlOne(i){
+  if(busy)return;var f=list[i],name=f.p.split("/").pop(),sink=null;
+  if(window.showSaveFilePicker){try{var h=await showSaveFilePicker({suggestedName:name}),w=await h.createWritable();sink={write:function(b){return w.write(b)},close:function(){return w.close()}}}catch(e){if(e&&e.name==="AbortError")return}}
+  busy=true;msg("Downloading "+name+"…");
+  try{var b=await fetchFile(i,sink);if(!sink)saveBlob(b,name);msg("Done ✓ "+name)}catch(e){msg("Download failed: "+e.message,true)}
+  prog(null);busy=false}
+async function dlAll(){
+  if(busy)return;if(list.length==1)return dlOne(0);
+  if(!window.JSZip){msg("Zip library failed to load, download files one by one.",true);return}
+  busy=true;
+  try{var z=new JSZip();
+    for(var i=0;i<list.length;i++){msg("Downloading "+(i+1)+" of "+list.length+": "+list[i].p);z.file(list[i].p,await fetchFile(i,null),{binary:true})}
+    msg("Building zip…");prog(null);
+    var b=await z.generateAsync({type:"blob",compression:"STORE"},function(m){prog(m.percent/100)});
+    saveBlob(b,"filedrop.zip");msg("Done ✓ filedrop.zip")}catch(e){msg("Download failed: "+e.message,true)}
+  prog(null);busy=false}
+function recvList(){
+  var box=$("rl");if(!box)return;box.innerHTML="";
+  var total=list.reduce(function(a,f){return a+f.s},0);
+  $("rh").textContent=list.length+" file"+(list.length==1?"":"s")+" · "+fmt(total);
+  $("ra").style.display=list.length?"":"none";$("ra").textContent=list.length>1?"Download all (.zip)":"Download";
+  if(!list.length)box.appendChild(el("div","empty","The sender hasn’t added any files yet."));
+  list.slice().map(function(f,i){return{f:f,i:i}}).sort(function(a,b){return a.f.p.localeCompare(b.f.p)}).forEach(function(x){
+    var r=el("div","row");r.appendChild(el("span","nm","📄 "+x.f.p));r.appendChild(el("span","sz",fmt(x.f.s)));
+    var b=el("button","","Download");b.onclick=function(){dlOne(x.i)};r.appendChild(b);box.appendChild(r)})}
+function receiverView(id){
+  app.innerHTML="";
+  app.appendChild(el("h2","","Files for you"));
+  var s=el("div","sub","Connecting to sender…");s.id="rs";app.appendChild(s);
+  var h=el("div","sub");h.id="rh";app.appendChild(h);
+  var a=el("button","pri","Download");a.id="ra";a.style.display="none";a.onclick=dlAll;var ac=el("div","acts");ac.appendChild(a);app.appendChild(ac);
+  var L=el("div","list");L.id="rl";app.appendChild(L);
+  var timer=setTimeout(function(){$("rs").textContent="Couldn’t reach the sender. They may have closed the page, or their network blocks direct connections.";$("rs").style.color="var(--danger)"},20000);
+  rpeer=new Peer();
+  rpeer.on("error",function(e){clearTimeout(timer);$("rs").style.color="var(--danger)";$("rs").textContent=e.type==="peer-unavailable"?"The sender is offline or closed the page. Ask them to reopen it.":"Connection problem: "+e.type});
+  rpeer.on("open",function(){
+    conn=rpeer.connect(id,{reliable:true});
+    conn.on("open",function(){clearTimeout(timer);$("rs").textContent="Connected ✓ files come straight from the sender.";$("rs").style.color="var(--ok)"});
+    conn.on("data",onData);
+    conn.on("close",function(){$("rs").textContent="Sender disconnected.";$("rs").style.color="var(--danger)";if(cur){cur.rej(new Error("sender disconnected"));cur=null}});
+  })}
+
+/* ================= BOOT ================= */
+function boot(){
+  var id=location.hash.slice(1).trim();
+  if(typeof Peer==="undefined"){app.appendChild(el("div","empty","Couldn’t load the connection library (peerjs). Check your internet connection or ad blocker and reload."));return}
+  if(id)receiverView(id);else senderView()}
+$("home").onclick=function(){if(location.hash){location.hash="";location.reload()}};
+window.addEventListener("hashchange",function(){location.reload()});
+window.addEventListener("beforeunload",function(e){if(files.length&&conns.length){e.preventDefault();e.returnValue=""}});
+Promise.all([
+  load(["https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js","https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js","https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"]),
+  load(["https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js","https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"])
+]).then(boot);
 })();
 </script>
 </body>
