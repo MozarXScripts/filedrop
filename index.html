@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>FileDrop</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+:root{--bg:#f6f5f1;--card:#fff;--ink:#1c1b19;--mut:#78756d;--line:#e4e1d8;--acc:#2f5bea;--accink:#fff;--hover:#f0eee7;--danger:#c0392b;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#15151a;--card:#1e1e25;--ink:#ecebe6;--mut:#9a98a0;--line:#31313a;--acc:#6f8cff;--accink:#0d0d14;--hover:#26262f;--danger:#ff7b6b}}
+:root[data-theme="dark"]{--bg:#15151a;--card:#1e1e25;--ink:#ecebe6;--mut:#9a98a0;--line:#31313a;--acc:#6f8cff;--accink:#0d0d14;--hover:#26262f;--danger:#ff7b6b}
+*{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:820px;margin:0 auto;padding:20px 16px 60px}
+header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
+h1{font-size:22px;margin:0;letter-spacing:-.02em}
+.badge{font-size:12px;color:var(--mut);border:1px solid var(--line);border-radius:99px;padding:2px 10px}
+#drop{margin:16px 0;border:2px dashed var(--line);border-radius:14px;padding:26px 16px;text-align:center;background:var(--card);transition:.15s}
+#drop.over{border-color:var(--acc);background:var(--hover)}
+#drop p{margin:0 0 12px;color:var(--mut)}
+button,.btn{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:9px;padding:7px 13px}
+button:hover{background:var(--hover)}
+button.pri{background:var(--acc);color:var(--accink);border-color:var(--acc)}
+button.pri:hover{opacity:.9}
+button.del{color:var(--danger)}
+button:disabled{opacity:.5;cursor:default}
+.opts{margin-top:10px;font-size:13px;color:var(--mut)}
+.bar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:14px 0 8px}
+.crumbs{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+.crumbs a{color:var(--acc);cursor:pointer;text-decoration:none}.crumbs span{color:var(--mut)}
+.list{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.row{display:flex;align-items:center;gap:10px;padding:10px 14px;border-top:1px solid var(--line)}
+.row:first-child{border-top:0}
+.row.f{cursor:pointer}.row.f:hover{background:var(--hover)}
+.ic{width:22px;text-align:center}.nm{flex:1;min-width:0;overflow-wrap:anywhere}
+.sz{color:var(--mut);font-size:13px;white-space:nowrap}
+.empty{padding:30px;text-align:center;color:var(--mut)}
+#msg{margin-top:10px;font-size:13px;color:var(--mut);min-height:18px}
+#msg.err{color:var(--danger)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><h1>📁 FileDrop</h1><span class="badge" id="mode">Starting…</span></header>
+  <div id="drop">
+    <p id="droptxt">Drop files, folders or .zip archives here</p>
+    <button class="pri" id="bf">Choose files</button>
+    <button id="bd">Choose folder</button>
+    <div class="opts"><label><input type="checkbox" id="unzip" checked> Unpack .zip files into folders</label></div>
+    <input type="file" id="fi" multiple hidden>
+    <input type="file" id="di" webkitdirectory hidden>
+  </div>
+  <div id="msg"></div>
+  <div class="bar"><div class="crumbs" id="crumbs"></div><button id="dlf">Download folder as .zip</button></div>
+  <div class="list" id="list"></div>
+</div>
+<script>
+(function(){
+var entries=[],local=[],cur="",db=null,assets=null,dl=null,shared=false,canWrite=true,busy=false;
+var $=function(i){return document.getElementById(i)};
+function msg(t,err){var m=$("msg");m.textContent=t||"";m.className=err?"err":""}
+function fmt(n){if(n<1024)return n+" B";if(n<1048576)return (n/1024).toFixed(1)+" KB";if(n<1073741824)return (n/1048576).toFixed(1)+" MB";return (n/1073741824).toFixed(2)+" GB"}
+function all(){return entries.concat(local)}
+function esc(s){var d=document.createElement("div");d.textContent=s;return d.innerHTML}
+
+/* ---------- storage ---------- */
+async function init(){
+  try{db=await claude.use("db")}catch(e){db=null}
+  try{assets=await claude.use("assets")}catch(e){assets=null}
+  try{dl=await claude.use("downloads")}catch(e){dl=null}
+  if(db){
+    shared=true;canWrite=!!assets;
+    try{db.collection("files").onSnapshot(function(s){
+      entries=s.docs.map(function(d){var x=d.data();x.id=d.id;return x});render()},
+      function(){shared=false;canWrite=true;modeUi();render()});}catch(e){shared=false}
+  }
+  modeUi();render();
+}
+function modeUi(){
+  $("mode").textContent=shared?(canWrite?"Shared library · you can upload":"Shared library · view only"):"Local session · files stay in this tab";
+  $("drop").style.display=canWrite?"":"none";
+}
+async function blobOf(e){
+  if(e.blob)return e.blob;
+  var r=await fetch("/_blob/"+e.assetId);
+  if(!r.ok)throw new Error("fetch failed");
+  return await r.blob();
+}
+async function addFile(path,blob){
+  var item={path:path,size:blob.size,type:blob.type||"application/octet-stream",ts:Date.now()};
+  if(shared&&assets){
+    try{
+      var up=await assets.upload(blob);
+      item.assetId=up.id;
+      await db.collection("files").doc().set(item);
+      return;
+    }catch(e){
+      item.blob=blob;item.id="l"+Math.random().toString(36).slice(2);item.localOnly=true;local.push(item);
+      throw new Error((e&&e.message)||"upload rejected");
+    }
+  }
+  item.blob=blob;item.id="l"+Math.random().toString(36).slice(2);
+  local.push(item);
+}
+
+/* ---------- intake ---------- */
+function readEntry(en,prefix,out){
+  return new Promise(function(res){
+    if(en.isFile){en.file(function(f){out.push({path:prefix+en.name,file:f});res()},function(){res()})}
+    else if(en.isDirectory){
+      var rd=en.createReader(),acc=[];
+      (function pump(){rd.readEntries(async function(b){
+        if(!b.length){for(var i=0;i<acc.length;i++)await readEntry(acc[i],prefix+en.name+"/",out);res()}
+        else{acc=acc.concat(Array.prototype.slice.call(b));pump()}},function(){res()})})();
+    }else res();
+  });
+}
+async function expand(items){
+  var out=[];
+  for(var i=0;i<items.length;i++){
+    var it=items[i],f=it.file;
+    if($("unzip").checked&&/\.zip$/i.test(f.name)){
+      try{
+        var z=await JSZip.loadAsync(f),base=it.path.replace(/\.zip$/i,""),names=Object.keys(z.files);
+        for(var k=0;k<names.length;k++){
+          var zf=z.files[names[k]];
+          if(zf.dir||/(^|\/)__MACOSX\//.test(zf.name)||/(^|\/)\.DS_Store$/.test(zf.name))continue;
+          out.push({path:base+"/"+zf.name,file:await zf.async("blob")});
+        }
+        continue;
+      }catch(e){msg("Couldn’t unpack "+f.name+", keeping it as a .zip.",true)}
+    }
+    out.push(it);
+  }
+  return out;
+}
+async function ingest(items){
+  if(busy||!items.length)return;busy=true;
+  var errs=0,list=await expand(items),prefix=cur?cur+"/":"";
+  for(var i=0;i<list.length;i++){
+    msg("Adding "+(i+1)+" of "+list.length+": "+list[i].path);
+    try{await addFile(prefix+list[i].path.replace(/^\/+/,""),list[i].file)}catch(e){errs++}
+    if(!shared)render();
+  }
+  busy=false;render();
+  msg(errs?(errs+" file(s) couldn’t be saved to the shared library (type or size limit), kept for this session only."):"Added "+list.length+" file"+(list.length==1?"":"s")+".",!!errs);
+}
+var drop=$("drop");
+["dragenter","dragover"].forEach(function(n){drop.addEventListener(n,function(e){e.preventDefault();drop.classList.add("over")})});
+["dragleave","drop"].forEach(function(n){drop.addEventListener(n,function(e){e.preventDefault();drop.classList.remove("over")})});
+drop.addEventListener("drop",async function(e){
+  var dt=e.dataTransfer,out=[],ens=[];
+  if(dt.items&&dt.items.length){for(var i=0;i<dt.items.length;i++){var en=dt.items[i].webkitGetAsEntry&&dt.items[i].webkitGetAsEntry();if(en)ens.push(en)}}
+  if(ens.length){for(var j=0;j<ens.length;j++)await readEntry(ens[j],"",out)}
+  else for(var k=0;k<dt.files.length;k++)out.push({path:dt.files[k].name,file:dt.files[k]});
+  ingest(out);
+});
+$("bf").onclick=function(){$("fi").click()};$("bd").onclick=function(){$("di").click()};
+$("fi").onchange=function(e){ingest(Array.prototype.map.call(e.target.files,function(f){return{path:f.name,file:f}}));e.target.value=""};
+$("di").onchange=function(e){ingest(Array.prototype.map.call(e.target.files,function(f){return{path:f.webkitRelativePath||f.name,file:f}}));e.target.value=""};
+
+/* ---------- download / delete ---------- */
+async function save(name,blob){
+  if(dl){try{await dl.save({filename:name,data:blob});return}catch(e){if(e&&e.code==="declined")return}}
+  var a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();
+}
+async function dlFile(e){try{msg("Preparing…");await save(e.path.split("/").pop(),await blobOf(e));msg("")}catch(x){msg("Download failed.",true)}}
+async function dlFolder(path){
+  var pre=path?path+"/":"",set=all().filter(function(e){return e.path.indexOf(pre)===0});
+  if(!set.length)return;
+  try{
+    var z=new JSZip();
+    for(var i=0;i<set.length;i++){msg("Zipping "+(i+1)+" of "+set.length+"…");z.file(set[i].path.slice(pre.length),await blobOf(set[i]))}
+    var b=await z.generateAsync({type:"blob"});
+    await save((path?path.split("/").pop():"filedrop")+".zip",b);msg("");
+  }catch(x){msg("Couldn’t build the zip.",true)}
+}
+var armed=null;
+async function del(paths,btn){
+  if(armed!==btn){armed=btn;btn.textContent="Sure?";setTimeout(function(){if(armed===btn){armed=null;btn.textContent="Delete"}},3000);return}
+  armed=null;
+  var set=all().filter(function(e){return paths(e)});
+  for(var i=0;i<set.length;i++){
+    var e=set[i];
+    if(e.blob){local=local.filter(function(l){return l!==e})}
+    else{try{await db.collection("files").doc(e.id).delete();if(assets&&e.assetId)await assets.delete(e.assetId)}catch(x){msg("Couldn’t delete "+e.path,true)}}
+  }
+  render();
+}
+
+/* ---------- view ---------- */
+function render(){
+  var pre=cur?cur+"/":"",folders={},files=[];
+  all().forEach(function(e){
+    if(e.path.indexOf(pre)!==0)return;
+    var rest=e.path.slice(pre.length),i=rest.indexOf("/");
+    if(i<0)files.push(e);else{var n=rest.slice(0,i);folders[n]=(folders[n]||0)+1}
+  });
+  var c=$("crumbs");c.innerHTML="";
+  var parts=cur?cur.split("/"):[];
+  function crumb(label,path,last){var a=document.createElement(last?"b":"a");a.textContent=label;if(!last)a.onclick=function(){cur=path;render()};c.appendChild(a)}
+  crumb("All files","",!parts.length);
+  parts.forEach(function(p,i){var s=document.createElement("span");s.textContent="›";c.appendChild(s);crumb(p,parts.slice(0,i+1).join("/"),i==parts.length-1)});
+  var L=$("list");L.innerHTML="";
+  var fn=Object.keys(folders).sort(),any=fn.length||files.length;
+  $("dlf").style.display=any?"":"none";
+  $("dlf").onclick=function(){dlFolder(cur)};
+  if(!any){L.innerHTML='<div class="empty">'+(canWrite?"Nothing here yet. Drop something above.":"Nothing has been shared yet.")+"</div>";return}
+  fn.forEach(function(n){
+    var r=document.createElement("div");r.className="row f";
+    r.innerHTML='<span class="ic">📁</span><span class="nm">'+esc(n)+'</span><span class="sz">'+folders[n]+" file"+(folders[n]==1?"":"s")+"</span>";
+    var z=document.createElement("button");z.textContent="Zip";z.onclick=function(ev){ev.stopPropagation();dlFolder(pre+n)};r.appendChild(z);
+    if(canWrite){var d=document.createElement("button");d.className="del";d.textContent="Delete";d.onclick=function(ev){ev.stopPropagation();del(function(e){return e.path.indexOf(pre+n+"/")===0},d)};r.appendChild(d)}
+    r.onclick=function(){cur=pre+n;render()};L.appendChild(r);
+  });
+  files.sort(function(a,b){return a.path.localeCompare(b.path)}).forEach(function(e){
+    var r=document.createElement("div");r.className="row";
+    r.innerHTML='<span class="ic">📄</span><span class="nm">'+esc(e.path.slice(pre.length))+(e.localOnly?' <span class="badge">this session only</span>':"")+'</span><span class="sz">'+fmt(e.size||0)+"</span>";
+    var b=document.createElement("button");b.textContent="Download";b.onclick=function(){dlFile(e)};r.appendChild(b);
+    if(canWrite){var d=document.createElement("button");d.className="del";d.textContent="Delete";d.onclick=function(){del(function(x){return x===e},d)};r.appendChild(d)}
+    L.appendChild(r);
+  });
+}
+render();
+var t=setTimeout(function(){},0);
+if(window.claude&&claude.use)init();else{$("mode").textContent="Local session · files stay in this tab";render()}
+})();
+</script>
+</body>
+</html>
