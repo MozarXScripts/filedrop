@@ -136,7 +136,7 @@ async function homeView(app){
     else for(var k=0;k<dt.files.length;k++)out.push({path:dt.files[k].name,file:dt.files[k]});
     ingest(out,cb.checked)});
   if(assets&&db)app.appendChild(d);
-  else app.appendChild(el("div","empty","Sending files needs a signed-in account with upload access. You can still receive files with a code below."));
+  else await diag(app);
   app.appendChild(el("h2","","Got a code?"));
   var g=el("div","go"),inp=el("input");inp.type="text";inp.placeholder="Paste a code or link";
   var gb=el("button","pri","Open");
@@ -171,6 +171,20 @@ async function shareView(app,code){
     var r=el("div","row");r.appendChild(el("span","nm","📄 "+f.p));r.appendChild(el("span","sz",fmt(f.s)));
     var x=el("button","","Download");x.onclick=function(){dlOne(f)};r.appendChild(x);L.appendChild(r)});
   app.appendChild(L)}
+async function diag(app){
+  var box=el("div","empty"),st={};
+  try{var p=await claude.use("permissions");if(p)st=await p.state()}catch(e){}
+  var miss=[];if(!db)miss.push("storage (db)");if(!assets)miss.push("uploads (assets)");
+  box.appendChild(el("p","","Uploads aren’t switched on for this view yet. Missing: "+miss.join(", ")+"."));
+  var ps=Object.keys(st).map(function(k){return k+": "+st[k]}).join(" · ");
+  if(ps)box.appendChild(el("p","sz","Permissions → "+ps));
+  var a=el("button","pri","Allow & retry");
+  a.onclick=async function(){try{var p=await claude.use("permissions");if(p)await p.request()}catch(e){}await init()};
+  var m=el("button","","Manage permissions");
+  m.onclick=async function(){try{var p=await claude.use("permissions");if(p)await p.manage()}catch(e){}await init()};
+  box.appendChild(a);box.appendChild(document.createTextNode(" "));box.appendChild(m);
+  box.appendChild(el("p","sz","You can still receive files with a code below."));
+  app.appendChild(box)}
 async function route(){
   var app=$("app"),code=location.hash.slice(1).toLowerCase();app.innerHTML="";
   if(code)await shareView(app,code);else await homeView(app)}
